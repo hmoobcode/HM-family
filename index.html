@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Family GPS Tracker</title>
+    <!-- โหลด Leaflet CSS สำหรับแสดงแผนที่ -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 15px; background: #f4f4f9; color: #333; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 15px; max-width: 500px; margin-left: auto; margin-right: auto; }
+        input, button { width: 100%; padding: 12px; margin-top: 10px; box-sizing: border-box; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem; }
+        .btn-parent { background: #28a745; color: white; border: none; font-weight: bold; cursor: pointer; }
+        .btn-member { background: #007bff; color: white; border: none; font-weight: bold; cursor: pointer; }
+        .btn-danger { background: #e53e3e; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 15px; }
+        button:hover { opacity: 0.9; }
+        #map { width: 100%; height: 350px; border-radius: 8px; margin-top: 10px; }
+        .hidden { display: none; }
+        .id-badge { background: #e2e8f0; padding: 12px; text-align: center; font-size: 1.8rem; font-weight: bold; letter-spacing: 3px; color: #2d3748; border-radius: 8px; margin: 10px 0; }
+        .member-item { padding: 10px; background: #f7fafc; margin-bottom: 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #48bb78; font-size: 0.95rem; }
+        .status-box { background: #c6f6d5; color: #22543d; padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; margin-top: 10px; }
+        .config-box { background: #fff3cd; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 0.9rem; border: 1px solid #ffeeba; }
+    </style>
+</head>
+<body>
+
+    <div class="card" id="mainContainer">
+        <h2>📍 ระบบติดตามพิกัดครอบครัว</h2>
+        
+        <!-- ช่องใส่ URL ของ Google Apps Script (วางลิงก์ Web App ที่นี่) -->
+        <div class="config-box">
+            <label for="gasUrlInput"><b>🔗 Google Apps Script Web App URL:</b></label>
+            <input type="text" id="gasUrlInput" placeholder="https://script.google.com/macros/s/AKfycbz1G0ZBozxFRXt2ZwB3Ujou5srJCQdu7E2_qRZjOIypTbdYhhs_crCUCkB71Iqvodz4jw/exec">
+            <button style="background: #6c757d; color: white; padding: 8px; font-size: 0.9rem;" onclick="saveGasUrl()">บันทึกค่า URL</button>
+        </div>
+
+        <!-- หน้าเลือกบทบาท -->
+        <div id="homeView" class="hidden">
+            <p>เลือกบทบาทการใช้งานของคุณ:</p>
+            
+            <hr style="margin: 15px 0; border:0; border-top:1px solid #eee;">
+            
+            <h3>👨‍👩‍👧 สำหรับผู้ปกครอง</h3>
+            <input type="text" id="parentNameInput" placeholder="ชื่อผู้ปกครอง (เช่น คุณพ่อ)">
+            <button class="btn-parent" onclick="createParentAccount()">สร้างบัญชีและรับ ID 8 หลัก</button>
+
+            <hr style="margin: 20px 0; border:0; border-top:1px solid #eee;">
+
+            <h3>🧒 สำหรับสมาชิก (เด็กๆ)</h3>
+            <input type="text" id="memberNameInput" placeholder="ชื่อสมาชิก (เช่น น้องเต้)">
+            <input type="text" id="targetIdInput" placeholder="ป้อน ID 8 หลักของผู้ปกครอง">
+            <button class="btn-member" onclick="joinAsMember()">เชื่อมต่อและแชร์พิกัด GPS</button>
+        </div>
+
+        <!-- หน้าจอผู้ปกครอง -->
+        <div id="parentDashboard" class="hidden">
+            <h2>👨‍👩‍👧 หน้าจอผู้ปกครอง</h2>
+            <p>ผู้ปกครอง: <b id="displayParentName"></b></p>
+            <p>รหัส ID สำหรับให้สมาชิกเชื่อมต่อ:</p>
+            <div class="id-badge" id="displayParentId">--------</div>
+            
+            <button class="btn-parent" onclick="loadParentMap()">🔄 รีเฟรชตำแหน่งสมาชิก</button>
+            <button class="btn-danger" onclick="logout()">ออกจากระบบ</button>
+
+            <h3 style="margin-top: 15px;">🗺️ แผนที่ติดตามสมาชิก</h3>
+            <div id="memberList" style="margin-bottom: 10px;"></div>
+            <div id="map"></div>
+        </div>
+
+        <!-- หน้าจอสมาชิก -->
+        <div id="memberDashboard" class="hidden">
+            <h2>🧒 หน้าจอสมาชิก</h2>
+            <p>ชื่อ: <b id="displayMemberName"></b></p>
+            <p>เชื่อมต่อกับผู้ปกครอง ID: <b id="displayConnectedId"></b></p>
+            <div class="status-box">
+                🟢 กำลังส่งพิกัด GPS อัตโนมัติทุกๆ 30 วินาที
+            </div>
+            <p id="memberStatus" style="font-size: 0.9rem; color: #666; margin-top: 10px; text-align: center;"></p>
+            <button class="btn-danger" onclick="logout()">หยุดแชร์และออกจากระบบ</button>
+        </div>
+    </div>
+
+    <!-- โหลด Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        let GAS_URL = localStorage.getItem('gas_url') || '';
+        let map = null;
+        let markersLayer = null;
+        let trackingTimer = null;
+
+        window.onload = function() {
+            if (GAS_URL) {
+                document.getElementById('gasUrlInput').value = GAS_URL;
+                document.getElementById('homeView').classList.remove('hidden');
+            }
+
+            const savedRole = localStorage.getItem('role');
+            if (savedRole === 'parent') {
+                showParentDashboard(localStorage.getItem('name'), localStorage.getItem('parentId'));
+            } else if (savedRole === 'member') {
+                showMemberDashboard(localStorage.getItem('name'), localStorage.getItem('parentId'));
+                startSendingGPS(localStorage.getItem('name'), localStorage.getItem('parentId'));
+            }
+        };
+
+        function saveGasUrl() {
+            const url = document.getElementById('gasUrlInput').value.trim();
+            if (!url.startsWith('https://script.google.com')) {
+                alert('กรุณากรอกลิงก์ Google Apps Script URL ให้ถูกต้อง');
+                return;
+            }
+            localStorage.setItem('gas_url', url);
+            GAS_URL = url;
+            alert('บันทึก URL สำเร็จ!');
+            document.getElementById('homeView').classList.remove('hidden');
+        }
+
+        function checkGasUrl() {
+            if (!GAS_URL) {
+                alert('กรุณากรอกและบันทึก Google Apps Script Web App URL ด้านบนก่อนใช้งานครับ');
+                return false;
+            }
+            return true;
+        }
+
+        // ผู้ปกครอง: สร้างบัญชี
+        function createParentAccount() {
+            if (!checkGasUrl()) return;
+            const name = document.getElementById('parentNameInput').value.trim();
+            if (!name) {
+                alert('กรุณากรอกชื่อผู้ปกครองก่อนครับ');
+                return;
+            }
+
+            const random8Digits = Math.floor(10000000 + Math.random() * 90000000).toString();
+
+            fetch(GAS_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'create_parent', parentId: random8Digits, parentName: name })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    localStorage.setItem('role', 'parent');
+                    localStorage.setItem('name', name);
+                    localStorage.setItem('parentId', random8Digits);
+                    showParentDashboard(name, random8Digits);
+                } else {
+                    alert('เกิดข้อผิดพลาด: ' + data.message);
+                }
+            }).catch(err => alert('เชื่อมต่อหลังบ้านล้มเหลว: ' + err));
+        }
+
+        function showParentDashboard(name, parentId) {
+            document.getElementById('gasUrlInput').parentElement.classList.add('hidden');
+            document.getElementById('homeView').classList.add('hidden');
+            document.getElementById('parentDashboard').classList.remove('hidden');
+            document.getElementById('displayParentName').innerText = name;
+            document.getElementById('displayParentId').innerText = parentId;
+
+            initMap();
+            loadParentMap();
+            setInterval(loadParentMap, 15000); // รีเฟรชแผนทุก 15 วินาที
+        }
+
+        // สมาชิก: เข้าระบบและแชร์พิกัด
+        function joinAsMember() {
+            if (!checkGasUrl()) return;
+            const name = document.getElementById('memberNameInput').value.trim();
+            const parentId = document.getElementById('targetIdInput').value.trim();
+
+            if (!name || !parentId || parentId.length !== 8) {
+                alert('กรุณากรอกชื่อ และรหัส ID ผู้ปกครองให้ครบถ้วน (ต้องเป็น 8 หลัก)');
+                return;
+            }
+
+            localStorage.setItem('role', 'member');
+            localStorage.setItem('name', name);
+            localStorage.setItem('parentId', parentId);
+
+            showMemberDashboard(name, parentId);
+            startSendingGPS(name, parentId);
+        }
+
+        function showMemberDashboard(name, parentId) {
+            document.getElementById('gasUrlInput').parentElement.classList.add('hidden');
+            document.getElementById('homeView').classList.add('hidden');
+            document.getElementById('memberDashboard').classList.remove('hidden');
+            document.getElementById('displayMemberName').innerText = name;
+            document.getElementById('displayConnectedId').innerText = parentId;
+        }
+
+        function startSendingGPS(name, parentId) {
+            sendGPSNow(name, parentId);
+            trackingTimer = setInterval(() => {
+                sendGPSNow(name, parentId);
+            }, 30000); // ส่งพิกัดทุกๆ 30 วินาที
+        }
+
+        function sendGPSNow(name, parentId) {
+            const statusText = document.getElementById('memberStatus');
+            if (!navigator.geolocation) {
+                statusText.innerText = 'เบราว์เซอร์นี้ไม่รองรับระบบ GPS';
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(position => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+
+                fetch(GAS_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'update_location', parentId: parentId, memberName: name, lat: lat, lon: lon })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    statusText.innerText = 'อัปเดตพิกัดล่าสุดสำเร็จ: ' + new Date().toLocaleTimeString();
+                }).catch(err => {
+                    statusText.innerText = 'ส่งข้อมูลไปเซิร์ฟเวอร์ไม่สำเร็จ';
+                });
+            }, error => {
+                statusText.innerText = 'ไม่สามารถเข้าถึงตำแหน่ง GPS ได้: ' + error.message;
+            }, { enableHighAccuracy: true });
+        }
+
+        function initMap() {
+            if (!map) {
+                map = L.map('map').setView([13.7563, 100.5018], 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
+                markersLayer = L.layerGroup().addTo(map);
+            }
+        }
+
+        function loadParentMap() {
+            const parentId = localStorage.getItem('parentId');
+            if (!parentId || !GAS_URL) return;
+
+            fetch(`${GAS_URL}?parentId=${parentId}`)
+            .then(res => res.json())
+            .then(data => {
+                const listContainer = document.getElementById('memberList');
+                listContainer.innerHTML = '<b>รายชื่อสมาชิกที่เชื่อมต่ออยู่:</b><br>';
+                markersLayer.clearLayers();
+
+                let bounds = [];
+
+                data.forEach(item => {
+                    if (item.role === 'member' && item.lat) {
+                        listContainer.innerHTML += `
+                            <div class="member-item">
+                                <span>🧒 <b>${item.name}</b></span>
+                                <span style="color: #666; font-size: 0.85rem;">อัปเดต: ${item.time}</span>
+                            </div>
+                        `;
+
+                        const marker = L.marker([item.lat, item.lon])
+                            .bindPopup(`<b>🧒 ${item.name}</b><br>อัปเดตล่าสุด: ${item.time}`);
+                        markersLayer.addLayer(marker);
+                        bounds.push([item.lat, item.lon]);
+                    }
+                });
+
+                if (bounds.length > 0) {
+                    map.fitBounds(bounds);
+                }
+            }).catch(err => console.log('โหลดแผนที่ผิดพลาด: ' + err));
+        }
+
+        function logout() {
+            if (trackingTimer) clearInterval(trackingTimer);
+            localStorage.clear();
+            location.reload();
+        }
+    </script>
+</body>
+</html>
