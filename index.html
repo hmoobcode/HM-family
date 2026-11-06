@@ -26,7 +26,7 @@
     <div class="card" id="mainContainer">
         <h2>📍 ระบบติดตามพิกัดครอบครัว</h2>
 
-        <!-- หน้าเลือกบทบาท (แสดงทันทีเมื่อเปิดเว็บ/แอป) -->
+        <!-- หน้าเลือกบทบาท -->
         <div id="homeView">
             <p>เลือกบทบาทการใช้งานของคุณ:</p>
             
@@ -75,8 +75,8 @@
     <!-- โหลด Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // ลิงก์ Google Apps Script ของคุณถูกฝังไว้ตายตัวตรงนี้เรียบร้อยแล้ว
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbxd1wC8phPF1SYsU2cs8pf9OS1r8ivozwaCdXQANoYMMCjIbbDuNXrPwSbEj64XiQNclQ/exec";
+        // 🔗 ฝังลิงก์ Google Apps Script ของคุณไว้ถาวรเรียบร้อย
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbz1G0ZBozxFRXt2ZwB3Ujou5srJCQdu7E2_qRZjOIypTbdYhhs_crCUCkB71Iqvodz4jw/exec";
         
         let map = null;
         let markersLayer = null;
@@ -84,11 +84,14 @@
 
         window.onload = function() {
             const savedRole = localStorage.getItem('role');
-            if (savedRole === 'parent') {
-                showParentDashboard(localStorage.getItem('name'), localStorage.getItem('parentId'));
-            } else if (savedRole === 'member') {
-                showMemberDashboard(localStorage.getItem('name'), localStorage.getItem('parentId'));
-                startSendingGPS(localStorage.getItem('name'), localStorage.getItem('parentId'));
+            const savedName = localStorage.getItem('name');
+            const savedParentId = localStorage.getItem('parentId');
+
+            if (savedRole === 'parent' && savedParentId) {
+                showParentDashboard(savedName, savedParentId);
+            } else if (savedRole === 'member' && savedName && savedParentId) {
+                showMemberDashboard(savedName, savedParentId);
+                startSendingGPS(savedName, savedParentId);
             }
         };
 
@@ -214,21 +217,25 @@
 
                 let bounds = [];
 
-                data.forEach(item => {
-                    if (item.role === 'member' && item.lat) {
-                        listContainer.innerHTML += `
-                            <div class="member-item">
-                                <span>🧒 <b>${item.name}</b></span>
-                                <span style="color: #666; font-size: 0.85rem;">อัปเดต: ${item.time}</span>
-                            </div>
-                        `;
+                if (Array.isArray(data) && data.length > 0) {
+                    data.forEach(item => {
+                        if (item.role === 'member' && item.lat) {
+                            listContainer.innerHTML += `
+                                <div class="member-item">
+                                    <span>🧒 <b>${item.name}</b></span>
+                                    <span style="color: #666; font-size: 0.85rem;">อัปเดต: ${item.time}</span>
+                                </div>
+                            `;
 
-                        const marker = L.marker([item.lat, item.lon])
-                            .bindPopup(`<b>🧒 ${item.name}</b><br>อัปเดตล่าสุด: ${item.time}`);
-                        markersLayer.addLayer(marker);
-                        bounds.push([item.lat, item.lon]);
-                    }
-                });
+                            const marker = L.marker([item.lat, item.lon])
+                                .bindPopup(`<b>🧒 ${item.name}</b><br>อัปเดตล่าสุด: ${item.time}`);
+                            markersLayer.addLayer(marker);
+                            bounds.push([item.lat, item.lon]);
+                        }
+                    });
+                } else {
+                    listContainer.innerHTML += '<p style="color: #666; font-size: 0.9rem;">ยังไม่มีสมาชิกเชื่อมต่อเข้ามา</p>';
+                }
 
                 if (bounds.length > 0) {
                     map.fitBounds(bounds);
